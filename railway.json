@@ -8,7 +8,7 @@
           "commands": ["npm install --omit=dev --ignore-scripts"]
         },
         "build": {
-          "commands": ["ls dist"]
+          "commands": ["node ./node_modules/vite/bin/vite.js build"]
         },
         "start": {
           "commands": ["node server.js"]
