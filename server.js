@@ -20,12 +20,20 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL
 })
 
+console.log('=== SERVER STARTING ===')
+console.log('DATABASE_URL:', process.env.DATABASE_URL ? 'set (masked)' : 'NOT SET')
+console.log('RAILWAY_VOLUME_MOUNT_PATH:', process.env.RAILWAY_VOLUME_MOUNT_PATH || 'not set')
+console.log('PORT:', process.env.PORT || '3001')
+console.log('=== END SERVER CONFIG ===')
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL
+})
+
 if (!process.env.DATABASE_URL) {
   console.error('ERROR: DATABASE_URL environment variable is not set!')
   process.exit(1)
 }
-
-console.log('Database URL configured:', process.env.DATABASE_URL.replace(/:[^:@]+@/, ':****@'))
 
 pool.on('error', (err) => {
   console.error('Unexpected PostgreSQL error:', err)
