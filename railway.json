@@ -5,15 +5,16 @@
     "nixpacksPlan": {
       "phases": {
         "install": {
-          "commands": ["npm install"]
+          "commands": ["npm install --omit=dev"]
         },
         "build": {
           "commands": ["npm run build"]
         },
         "start": {
-          "commands": ["npm start"]
+          "commands": ["node server.js"]
         }
-      }
+      },
+      "runtime": "nodejs_22"
     }
   },
   "deploy": {

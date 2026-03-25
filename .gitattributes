@@ -5,6 +5,7 @@
 *.json text eol=lf
 *.css text eol=lf
 *.md text eol=lf
+.gitignore text eol=lf
 
 node_modules/** -text
 dist/** -text

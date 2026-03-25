@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import multer from 'multer'
 import { v4 as uuidv4 } from 'uuid'
-import Database from 'better-sqlite3'
+import { Pool } from 'pg'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
@@ -15,49 +15,14 @@ const __dirname = path.dirname(__filename)
 const app = express()
 const PORT = process.env.PORT || 3001
 const JWT_SECRET = process.env.JWT_SECRET || 'nano-banana-secret-key-2025'
-const BASE_URL = process.env.RAILWAY_PUBLIC_DOMAIN 
-  ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` 
-  : process.env.BASE_URL || ''
 
-const db = new Database(path.join(__dirname, 'database.sqlite'))
-db.pragma('journal_mode = WAL')
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL
+})
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT
-  );
-  
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    email TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    role TEXT DEFAULT 'user',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-  
-  CREATE TABLE IF NOT EXISTS images (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    original_name TEXT,
-    enhanced_name TEXT,
-    original_path TEXT,
-    enhanced_path TEXT,
-    scale_factor TEXT,
-    input_tokens INTEGER,
-    output_tokens INTEGER,
-    cost REAL,
-    status TEXT DEFAULT 'pending',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  );
-`)
+const storageDir = process.env.RAILWAY_VOLUME_MOUNT_PATH || __dirname
 
-const ensureSetting = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)')
-ensureSetting.run('admin_email', 'admin@nano-banana.com')
-ensureSetting.run('gemini_api_key', '')
-
-const uploadDir = path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH || __dirname, 'uploads')
+const uploadDir = path.join(storageDir, 'uploads')
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true })
 
 const storage = multer.diskStorage({
@@ -104,10 +69,11 @@ const requireAdmin = (req, res, next) => {
   next()
 }
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body
   
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email)
+  const result = await pool.query('SELECT * FROM users WHERE email = $1', [email])
+  const user = result.rows[0]
   
   if (!user || !bcrypt.compareSync(password, user.password)) {
     return res.status(401).json({ error: 'Invalid credentials' })
@@ -128,64 +94,67 @@ app.post('/api/auth/register', authenticateToken, requireAdmin, async (req, res)
     return res.status(400).json({ error: 'Email and password required' })
   }
   
-  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email)
-  if (existing) {
+  const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email])
+  if (existing.rows.length > 0) {
     return res.status(400).json({ error: 'Email already exists' })
   }
   
   const hashedPassword = bcrypt.hashSync(password, 10)
   const id = uuidv4()
   
-  db.prepare('INSERT INTO users (id, email, password, role) VALUES (?, ?, ?, ?)').run(id, email, hashedPassword, role)
+  await pool.query(
+    'INSERT INTO users (id, email, password, role) VALUES ($1, $2, $3, $4)',
+    [id, email, hashedPassword, role]
+  )
   
   res.json({ message: 'User created successfully', user: { id, email, role } })
 })
 
-app.delete('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
+app.delete('/api/users/:id', authenticateToken, requireAdmin, async (req, res) => {
   const { id } = req.params
   
   if (id === req.user.id) {
     return res.status(400).json({ error: 'Cannot delete yourself' })
   }
   
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id)
-  if (!user) {
+  const user = await pool.query('SELECT * FROM users WHERE id = $1', [id])
+  if (user.rows.length === 0) {
     return res.status(404).json({ error: 'User not found' })
   }
   
-  if (user.role === 'admin') {
+  if (user.rows[0].role === 'admin') {
     return res.status(400).json({ error: 'Cannot delete admin users' })
   }
   
-  db.prepare('DELETE FROM images WHERE user_id = ?').run(id)
-  db.prepare('DELETE FROM users WHERE id = ?').run(id)
+  await pool.query('DELETE FROM images WHERE user_id = $1', [id])
+  await pool.query('DELETE FROM users WHERE id = $1', [id])
   
   res.json({ message: 'User deleted successfully' })
 })
 
-app.get('/api/users', authenticateToken, requireAdmin, (req, res) => {
-  const users = db.prepare('SELECT id, email, role, created_at FROM users ORDER BY created_at DESC').all()
-  res.json(users)
+app.get('/api/users', authenticateToken, requireAdmin, async (req, res) => {
+  const users = await pool.query('SELECT id, email, role, created_at FROM users ORDER BY created_at DESC')
+  res.json(users.rows)
 })
 
-app.get('/api/settings', authenticateToken, requireAdmin, (req, res) => {
-  const apiKey = db.prepare('SELECT value FROM settings WHERE key = ?').get('gemini_api_key')
-  const adminEmail = db.prepare('SELECT value FROM settings WHERE key = ?').get('admin_email')
+app.get('/api/settings', authenticateToken, requireAdmin, async (req, res) => {
+  const apiKey = await pool.query("SELECT value FROM settings WHERE key = 'gemini_api_key'")
+  const adminEmail = await pool.query("SELECT value FROM settings WHERE key = 'admin_email'")
   
   res.json({
-    geminiApiKey: apiKey?.value || '',
-    adminEmail: adminEmail?.value || ''
+    geminiApiKey: apiKey.rows[0]?.value || '',
+    adminEmail: adminEmail.rows[0]?.value || ''
   })
 })
 
-app.post('/api/settings', authenticateToken, requireAdmin, (req, res) => {
+app.post('/api/settings', authenticateToken, requireAdmin, async (req, res) => {
   const { geminiApiKey, adminEmail } = req.body
   
   if (geminiApiKey !== undefined) {
-    db.prepare('UPDATE settings SET value = ? WHERE key = ?').run(geminiApiKey, 'gemini_api_key')
+    await pool.query("UPDATE settings SET value = $1 WHERE key = 'gemini_api_key'", [geminiApiKey])
   }
   if (adminEmail !== undefined) {
-    db.prepare('UPDATE settings SET value = ? WHERE key = ?').run(adminEmail, 'admin_email')
+    await pool.query("UPDATE settings SET value = $1 WHERE key = 'admin_email'", [adminEmail])
   }
   
   res.json({ message: 'Settings updated successfully' })
@@ -193,8 +162,9 @@ app.post('/api/settings', authenticateToken, requireAdmin, (req, res) => {
 
 app.post('/api/enhance', authenticateToken, upload.single('image'), async (req, res) => {
   const { scaleFactor, sharpness, removeObjects } = req.body
-  const apiKeySetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('gemini_api_key')
-  const apiKey = apiKeySetting?.value
+  
+  const apiKeyResult = await pool.query("SELECT value FROM settings WHERE key = 'gemini_api_key'")
+  const apiKey = apiKeyResult.rows[0]?.value
   
   if (!apiKey) {
     return res.status(500).json({ error: 'API key not configured. Contact admin.' })
@@ -210,8 +180,9 @@ app.post('/api/enhance', authenticateToken, upload.single('image'), async (req, 
   const imageBase64 = imageBuffer.toString('base64')
   const mimeType = req.file.mimetype
   
-  db.prepare('INSERT INTO images (id, user_id, original_name, original_path, scale_factor, status) VALUES (?, ?, ?, ?, ?, ?)').run(
-    imageId, req.user.id, req.file.originalname, imagePath, scaleFactor, 'processing'
+  await pool.query(
+    'INSERT INTO images (id, user_id, original_name, original_path, scale_factor, status) VALUES ($1, $2, $3, $4, $5, $6)',
+    [imageId, req.user.id, req.file.originalname, imagePath, scaleFactor, 'processing']
   )
   
   try {
@@ -278,8 +249,9 @@ Preserve the original content, colors, and composition exactly. Do not add any t
     const enhancedPath = path.join(uploadDir, enhancedFilename)
     fs.writeFileSync(enhancedPath, enhancedBuffer)
     
-    db.prepare('UPDATE images SET enhanced_name = ?, enhanced_path = ?, status = ?, input_tokens = ?, output_tokens = ?, cost = ? WHERE id = ?').run(
-      enhancedFilename, enhancedPath, 'completed', inputTokens, outputTokens, cost, imageId
+    await pool.query(
+      'UPDATE images SET enhanced_name = $1, enhanced_path = $2, status = $3, input_tokens = $4, output_tokens = $5, cost = $6 WHERE id = $7',
+      [enhancedFilename, enhancedPath, 'completed', inputTokens, outputTokens, cost, imageId]
     )
     
     res.json({
@@ -292,48 +264,45 @@ Preserve the original content, colors, and composition exactly. Do not add any t
     })
     
   } catch (error) {
-    db.prepare('UPDATE images SET status = ? WHERE id = ?').run('failed', imageId)
+    await pool.query('UPDATE images SET status = $1 WHERE id = $2', ['failed', imageId])
     res.status(500).json({ error: error.message })
   }
 })
 
-app.get('/api/images', authenticateToken, (req, res) => {
-  const images = db.prepare(`
-    SELECT id, original_name, enhanced_name, scale_factor, input_tokens, output_tokens, cost, status, created_at 
-    FROM images 
-    WHERE user_id = ? 
-    ORDER BY created_at DESC
-  `).all(req.user.id)
-  
-  res.json(images)
+app.get('/api/images', authenticateToken, async (req, res) => {
+  const images = await pool.query(
+    'SELECT id, original_name, enhanced_name, scale_factor, input_tokens, output_tokens, cost, status, created_at FROM images WHERE user_id = $1 ORDER BY created_at DESC',
+    [req.user.id]
+  )
+  res.json(images.rows)
 })
 
-app.get('/api/images/:id/download', authenticateToken, (req, res) => {
-  const image = db.prepare('SELECT * FROM images WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id)
+app.get('/api/images/:id/download', authenticateToken, async (req, res) => {
+  const image = await pool.query('SELECT * FROM images WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id])
   
-  if (!image || !image.enhanced_path) {
+  if (image.rows.length === 0 || !image.rows[0].enhanced_path) {
     return res.status(404).json({ error: 'Image not found' })
   }
   
-  res.download(image.enhanced_path, image.enhanced_name)
+  res.download(image.rows[0].enhanced_path, image.rows[0].enhanced_name)
 })
 
-app.get('/api/stats/user', authenticateToken, (req, res) => {
-  const stats = db.prepare(`
-    SELECT 
+app.get('/api/stats/user', authenticateToken, async (req, res) => {
+  const stats = await pool.query(
+    `SELECT 
       COUNT(*) as total_images,
       COALESCE(SUM(input_tokens), 0) as total_input_tokens,
       COALESCE(SUM(output_tokens), 0) as total_output_tokens,
       COALESCE(SUM(cost), 0) as total_cost
     FROM images 
-    WHERE user_id = ? AND status = 'completed'
-  `).get(req.user.id)
-  
-  res.json(stats)
+    WHERE user_id = $1 AND status = 'completed'`,
+    [req.user.id]
+  )
+  res.json(stats.rows[0])
 })
 
-app.get('/api/stats/admin', authenticateToken, requireAdmin, (req, res) => {
-  const byUser = db.prepare(`
+app.get('/api/stats/admin', authenticateToken, requireAdmin, async (req, res) => {
+  const byUser = await pool.query(`
     SELECT 
       u.id, u.email, u.role,
       COUNT(i.id) as total_images,
@@ -344,11 +313,11 @@ app.get('/api/stats/admin', authenticateToken, requireAdmin, (req, res) => {
     LEFT JOIN images i ON u.id = i.user_id AND i.status = 'completed'
     GROUP BY u.id
     ORDER BY total_cost DESC
-  `).all()
+  `)
   
-  const monthlyStats = db.prepare(`
+  const monthlyStats = await pool.query(`
     SELECT 
-      strftime('%Y-%m', created_at) as month,
+      to_char(created_at, 'YYYY-MM') as month,
       COUNT(*) as total_images,
       COALESCE(SUM(cost), 0) as total_cost
     FROM images 
@@ -356,17 +325,17 @@ app.get('/api/stats/admin', authenticateToken, requireAdmin, (req, res) => {
     GROUP BY month
     ORDER BY month DESC
     LIMIT 12
-  `).all()
+  `)
   
-  const overall = db.prepare(`
+  const overall = await pool.query(`
     SELECT 
       COUNT(*) as total_images,
       COALESCE(SUM(cost), 0) as total_cost
     FROM images 
     WHERE status = 'completed'
-  `).get()
+  `)
   
-  res.json({ byUser, monthlyStats, overall })
+  res.json({ byUser: byUser.rows, monthlyStats: monthlyStats.rows, overall: overall.rows[0] })
 })
 
 app.get('/api/auth/me', authenticateToken, (req, res) => {
@@ -382,20 +351,63 @@ app.get('{*path}', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'))
 })
 
-const initAdmin = () => {
-  const adminExists = db.prepare("SELECT id FROM users WHERE role = 'admin'").get()
-  if (!adminExists) {
+async function initDb() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
+  `)
+  
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      role TEXT DEFAULT 'user',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `)
+  
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS images (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      original_name TEXT,
+      enhanced_name TEXT,
+      original_path TEXT,
+      enhanced_path TEXT,
+      scale_factor TEXT,
+      input_tokens INTEGER,
+      output_tokens INTEGER,
+      cost REAL,
+      status TEXT DEFAULT 'pending',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+  `)
+  
+  await pool.query("INSERT INTO settings (key, value) VALUES ('admin_email', 'byron@geekshop.ca') ON CONFLICT DO NOTHING")
+  await pool.query("INSERT INTO settings (key, value) VALUES ('gemini_api_key', '') ON CONFLICT DO NOTHING")
+  
+  const adminExists = await pool.query("SELECT id FROM users WHERE role = 'admin'")
+  if (adminExists.rows.length === 0) {
     const hashedPassword = bcrypt.hashSync('Bigb2347!@2025', 10)
-    db.prepare('INSERT INTO users (id, email, password, role) VALUES (?, ?, ?, ?)').run(
-      uuidv4(), 'admin@nano-banana.com', hashedPassword, 'admin'
+    await pool.query(
+      'INSERT INTO users (id, email, password, role) VALUES ($1, $2, $3, $4)',
+      [uuidv4(), 'byron@geekshop.ca', hashedPassword, 'admin']
     )
-    console.log('Admin user created: admin@nano-banana.com / Bigb2347!@2025')
+    console.log('Admin user created: byron@geekshop.ca / Bigb2347!@2025')
   }
 }
 
-initAdmin()
+async function startServer() {
+  await initDb()
+  
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`)
+    console.log('Admin credentials: byron@geekshop.ca / Bigb2347!@2025')
+  })
+}
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT}`)
-  console.log('Admin credentials: admin@nano-banana.com / Bigb2347!@2025')
-})
+startServer()
