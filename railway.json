@@ -5,10 +5,10 @@
     "nixpacksPlan": {
       "phases": {
         "install": {
-          "commands": ["npm install --omit=dev --ignore-scripts", "chmod +x node_modules/.bin/vite"]
+          "commands": ["npm install --omit=dev --ignore-scripts && chmod -R 755 node_modules/.bin/"]
         },
         "build": {
-          "commands": ["node ./node_modules/vite/bin/vite.js build"]
+          "commands": ["npm run build"]
         },
         "start": {
           "commands": ["node server.js"]
