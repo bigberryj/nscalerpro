@@ -352,53 +352,67 @@ app.get('{*path}', (req, res) => {
 })
 
 async function initDb() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      value TEXT
-    );
-  `)
+  console.log('Initializing database...')
   
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      email TEXT UNIQUE NOT NULL,
-      password TEXT NOT NULL,
-      role TEXT DEFAULT 'user',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-  `)
-  
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS images (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      original_name TEXT,
-      enhanced_name TEXT,
-      original_path TEXT,
-      enhanced_path TEXT,
-      scale_factor TEXT,
-      input_tokens INTEGER,
-      output_tokens INTEGER,
-      cost REAL,
-      status TEXT DEFAULT 'pending',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    );
-  `)
-  
-  await pool.query("INSERT INTO settings (key, value) VALUES ('admin_email', 'byron@geekshop.ca') ON CONFLICT DO NOTHING")
-  await pool.query("INSERT INTO settings (key, value) VALUES ('gemini_api_key', '') ON CONFLICT DO NOTHING")
-  
-  const adminExists = await pool.query("SELECT id FROM users WHERE role = 'admin'")
-  if (adminExists.rows.length === 0) {
-    const hashedPassword = bcrypt.hashSync('Bigb2347!@2025', 10)
-    await pool.query(
-      'INSERT INTO users (id, email, password, role) VALUES ($1, $2, $3, $4)',
-      [uuidv4(), 'byron@geekshop.ca', hashedPassword, 'admin']
-    )
-    console.log('Admin user created: byron@geekshop.ca / Bigb2347!@2025')
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      );
+    `)
+    console.log('Settings table created')
+    
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT DEFAULT 'user',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `)
+    console.log('Users table created')
+    
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS images (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        original_name TEXT,
+        enhanced_name TEXT,
+        original_path TEXT,
+        enhanced_path TEXT,
+        scale_factor TEXT,
+        input_tokens INTEGER,
+        output_tokens INTEGER,
+        cost REAL,
+        status TEXT DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      );
+    `)
+    console.log('Images table created')
+    
+    await pool.query("INSERT INTO settings (key, value) VALUES ('admin_email', 'byron@geekshop.ca') ON CONFLICT (key) DO NOTHING")
+    await pool.query("INSERT INTO settings (key, value) VALUES ('gemini_api_key', '') ON CONFLICT (key) DO NOTHING")
+    console.log('Settings upserted')
+    
+    const adminExists = await pool.query("SELECT id FROM users WHERE role = 'admin'")
+    if (adminExists.rows.length === 0) {
+      const hashedPassword = bcrypt.hashSync('Bigb2347!@2025', 10)
+      await pool.query(
+        'INSERT INTO users (id, email, password, role) VALUES ($1, $2, $3, $4)',
+        [uuidv4(), 'byron@geekshop.ca', hashedPassword, 'admin']
+      )
+      console.log('Admin user created: byron@geekshop.ca / Bigb2347!@2025')
+    } else {
+      console.log('Admin user already exists')
+    }
+  } catch (err) {
+    console.error('Database init error:', err.message)
+    throw err
   }
+}
 }
 
 async function startServer() {
