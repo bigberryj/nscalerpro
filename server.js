@@ -221,11 +221,7 @@ app.post('/api/enhance', authenticateToken, upload.single('image'), async (req, 
     
     if (removeObjects && removeObjects.trim()) {
       const objectsToRemove = removeObjects.trim()
-      prompt = `Edit this image to completely remove these objects/elements: ${objectsToRemove}. 
-After removing them, seamlessly fill in the empty spaces so it looks natural and realistic.
-Then upscale to ${resolution} with enhanced quality.
-The result should look like the objects were never there - no gaps, no artifacts, no traces.
-Preserve all other content, colors, and composition exactly. Do not add any text, watermarks, or new elements.`
+      prompt = `Remove the ${objectsToRemove} from this image completely. Make the result look natural as if they never existed. Then upscale to ${resolution}.`
     } else if (sharpness === 'extra-sharp') {
       prompt = `You are an expert AI image enhancement model. Analyze this image and recreate it at higher resolution (${resolution}) with:
 - Extra sharp/ crisp details
@@ -244,6 +240,9 @@ Preserve the original content, colors, and composition exactly. Do not add any t
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: "You are an image editing assistant. When asked to remove objects, edit the image to remove them and return the edited image." }]
+          },
           contents: [{
             parts: [
               { inlineData: { mimeType, data: imageBase64 } },
