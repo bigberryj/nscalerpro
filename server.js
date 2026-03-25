@@ -221,14 +221,11 @@ app.post('/api/enhance', authenticateToken, upload.single('image'), async (req, 
     
     if (removeObjects && removeObjects.trim()) {
       const objectsToRemove = removeObjects.trim()
-      prompt = `You are an expert AI image editing model. Analyze this image and:
-1. Remove the following objects from the image: ${objectsToRemove}
-2. Inpaint/regenerate the affected areas seamlessly, making it look natural as if those objects were never there
-3. Then upscale the image to higher resolution (${resolution})
-4. Enhance the overall quality, sharper details, and improved clarity
-5. Preserve the original content, colors, and composition exactly
-6. Make it look like a high-quality professional photograph
-Do not add any text, watermarks, or new elements.`
+      prompt = `Edit this image to completely remove these objects/elements: ${objectsToRemove}. 
+After removing them, seamlessly fill in the empty spaces so it looks natural and realistic.
+Then upscale to ${resolution} with enhanced quality.
+The result should look like the objects were never there - no gaps, no artifacts, no traces.
+Preserve all other content, colors, and composition exactly. Do not add any text, watermarks, or new elements.`
     } else if (sharpness === 'extra-sharp') {
       prompt = `You are an expert AI image enhancement model. Analyze this image and recreate it at higher resolution (${resolution}) with:
 - Extra sharp/ crisp details
