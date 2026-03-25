@@ -366,6 +366,10 @@ async function initDb() {
   console.log('Initializing database...')
   
   try {
+    const client = await pool.connect()
+    console.log('Connected to PostgreSQL successfully')
+    client.release()
+    
     await pool.query(`
       CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
