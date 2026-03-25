@@ -5,13 +5,13 @@
     "nixpacksPlan": {
       "phases": {
         "install": {
-          "commands": ["npm install --omit=dev --ignore-scripts && chmod -R 755 node_modules/.bin/"]
+          "commands": ["npm install --omit=dev --ignore-scripts && chmod -R 755 node_modules/.bin/ && echo '=== INSTALL COMPLETE ==='"]
         },
         "build": {
-          "commands": ["npm run build"]
+          "commands": ["npm run build && echo '=== BUILD COMPLETE ==='"]
         },
         "start": {
-          "commands": ["node server.js"]
+          "commands": ["echo '=== STARTING SERVER ===' && node server.js"]
         }
       },
       "runtime": "nodejs_22"

@@ -9,6 +9,13 @@ import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
 
+console.log('=== SERVER STARTING ===')
+console.log('Node version:', process.version)
+console.log('DATABASE_URL:', process.env.DATABASE_URL ? 'set (masked)' : 'NOT SET')
+console.log('RAILWAY_VOLUME_MOUNT_PATH:', process.env.RAILWAY_VOLUME_MOUNT_PATH || 'not set')
+console.log('PORT:', process.env.PORT || '3001')
+console.log('=== END SERVER CONFIG ===')
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
