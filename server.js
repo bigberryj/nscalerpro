@@ -221,7 +221,7 @@ app.post('/api/enhance', authenticateToken, upload.single('image'), async (req, 
     
     if (removeObjects && removeObjects.trim()) {
       const objectsToRemove = removeObjects.trim()
-      prompt = `Remove the ${objectsToRemove} from this image completely. Make the result look natural as if they never existed. Then upscale to ${resolution}.`
+      prompt = `Remove ${objectsToRemove} from this image.`
     } else if (sharpness === 'extra-sharp') {
       prompt = `You are an expert AI image enhancement model. Analyze this image and recreate it at higher resolution (${resolution}) with:
 - Extra sharp/ crisp details
@@ -235,13 +235,13 @@ Preserve the original content, colors, and composition exactly. Do not add any t
     }
     
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           systemInstruction: {
-            parts: [{ text: "You are an image editing assistant. When asked to remove objects, edit the image to remove them and return the edited image." }]
+            parts: [{ text: "You are an image editing assistant. Edit images as requested and return the edited image." }]
           },
           contents: [{
             parts: [
