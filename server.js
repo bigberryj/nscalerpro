@@ -20,6 +20,17 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL
 })
 
+if (!process.env.DATABASE_URL) {
+  console.error('ERROR: DATABASE_URL environment variable is not set!')
+  process.exit(1)
+}
+
+console.log('Database URL configured:', process.env.DATABASE_URL.replace(/:[^:@]+@/, ':****@'))
+
+pool.on('error', (err) => {
+  console.error('Unexpected PostgreSQL error:', err)
+})
+
 const storageDir = process.env.RAILWAY_VOLUME_MOUNT_PATH || __dirname
 
 const uploadDir = path.join(storageDir, 'uploads')
