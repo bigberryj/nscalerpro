@@ -268,10 +268,10 @@ Preserve the original content, colors, and composition exactly. Do not add any t
     
     const inputTokens = data.usageMetadata?.promptTokenCount || 0
     const outputTokens = data.usageMetadata?.candidatesTokenCount || 0
-    const totalTokens = inputTokens + outputTokens
     
-    const costPerMillion = 0.075
-    const cost = (totalTokens / 1000000) * costPerMillion
+    const inputCost = (inputTokens / 1000000) * 0.075
+    const outputCost = (outputTokens / 1000000) * 0.30
+    const cost = inputCost + outputCost
     
     const enhancedBuffer = Buffer.from(imagePart.inlineData.data, 'base64')
     const enhancedFilename = `enhanced-${imageId}.png`
