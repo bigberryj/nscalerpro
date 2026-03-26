@@ -250,16 +250,6 @@ ${aspectPrompt}Preserve the original content, colors, and composition exactly. D
     } else {
       prompt = `You are an expert AI image enhancement model. Analyze this image and recreate it at higher resolution (${resolution}) with improved quality, sharper details, and enhanced clarity.${aspectPrompt}Preserve the original content, colors, and composition exactly. Make it look like a high-quality professional photograph. Do not add any text, watermarks, or new elements.`
     }
-      prompt = `You are an expert AI image enhancement model. Analyze this image and recreate it at higher resolution (${resolution}) with:
-- Extra sharp/ crisp details
-- Enhanced clarity and definition
-- Improved texture and edge sharpness
-- Maximum detail preservation
-- Professional quality enhancement
-Preserve the original content, colors, and composition exactly. Do not add any text, watermarks, or new elements.`
-    } else {
-      prompt = `You are an expert AI image enhancement model. Analyze this image and recreate it at higher resolution (${resolution}) with improved quality, sharper details, and enhanced clarity. Preserve the original content, colors, and composition exactly. Make it look like a high-quality professional photograph. Do not add any text, watermarks, or new elements.`
-    }
     
     console.log('[ENHANCE] Making API call to Gemini...')
     
