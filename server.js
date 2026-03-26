@@ -16,9 +16,6 @@ console.log('[CONFIG] RAILWAY_VOLUME_MOUNT_PATH:', process.env.RAILWAY_VOLUME_MO
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-
 const app = express()
 const PORT = process.env.PORT || 3001
 const JWT_SECRET = process.env.JWT_SECRET || 'nano-banana-secret-key-2025'
