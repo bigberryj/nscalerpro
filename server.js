@@ -436,7 +436,6 @@ async function initDb() {
     throw err
   }
 }
-}
 
 async function startServer() {
   await initDb()
