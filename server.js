@@ -41,8 +41,15 @@ pool.on('error', (err) => {
 
 const storageDir = process.env.RAILWAY_VOLUME_MOUNT_PATH || __dirname
 
+console.log('[UPLOAD] Storage directory:', storageDir)
+
 const uploadDir = path.join(storageDir, 'uploads')
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true })
+if (!fs.existsSync(uploadDir)) {
+  console.log('[UPLOAD] Creating upload directory...')
+  fs.mkdirSync(uploadDir, { recursive: true })
+} else {
+  console.log('[UPLOAD] Upload directory exists')
+}
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -180,10 +187,14 @@ app.post('/api/settings', authenticateToken, requireAdmin, async (req, res) => {
 })
 
 app.post('/api/enhance', authenticateToken, upload.single('image'), async (req, res) => {
+  console.log('[ENHANCE] Request received')
+  
   const { scaleFactor, sharpness, removeObjects } = req.body
   
   const apiKeyResult = await pool.query("SELECT value FROM settings WHERE key = 'gemini_api_key'")
   const apiKey = apiKeyResult.rows[0]?.value
+  
+  console.log('[ENHANCE] API key present:', !!apiKey)
   
   if (!apiKey) {
     return res.status(500).json({ error: 'API key not configured. Contact admin.' })
@@ -192,6 +203,8 @@ app.post('/api/enhance', authenticateToken, upload.single('image'), async (req, 
   if (!req.file) {
     return res.status(400).json({ error: 'No image provided' })
   }
+  
+  console.log('[ENHANCE] File received:', req.file.originalname, req.file.size)
   
   const imageId = uuidv4()
   const imagePath = req.file.path
@@ -204,8 +217,14 @@ app.post('/api/enhance', authenticateToken, upload.single('image'), async (req, 
     [imageId, req.user.id, req.file.originalname, imagePath, scaleFactor, 'processing']
   )
   
+  console.log('[ENHANCE] Calling Gemini API...')
+  
   try {
     let prompt = ''
+    
+    console.log('[ENHANCE] Scale factor:', scaleFactor)
+    console.log('[ENHANCE] Sharpness:', sharpness)
+    console.log('[ENHANCE] Remove objects:', removeObjects)
     
     const resolution = scaleFactor === '1K' ? '1024x1024' : scaleFactor === '2K' ? '2048x2048' : '4096x4096'
     
@@ -223,6 +242,8 @@ Preserve the original content, colors, and composition exactly. Do not add any t
     } else {
       prompt = `You are an expert AI image enhancement model. Analyze this image and recreate it at higher resolution (${resolution}) with improved quality, sharper details, and enhanced clarity. Preserve the original content, colors, and composition exactly. Make it look like a high-quality professional photograph. Do not add any text, watermarks, or new elements.`
     }
+    
+    console.log('[ENHANCE] Making API call to Gemini...')
     
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
@@ -244,9 +265,12 @@ Preserve the original content, colors, and composition exactly. Do not add any t
       }
     )
     
+    console.log('[ENHANCE] API response status:', response.status)
+    
     const data = await response.json()
     
     if (!response.ok) {
+      console.error('[ENHANCE] API error:', data)
       throw new Error(data.error?.message || 'API request failed')
     }
     
@@ -283,6 +307,7 @@ Preserve the original content, colors, and composition exactly. Do not add any t
     })
     
   } catch (error) {
+    console.error('[ENHANCE] Error:', error.message)
     await pool.query('UPDATE images SET status = $1 WHERE id = $2', ['failed', imageId])
     res.status(500).json({ error: error.message })
   }
