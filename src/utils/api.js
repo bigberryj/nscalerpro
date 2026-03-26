@@ -57,6 +57,7 @@ export const api = {
     formData.append('scaleFactor', scaleFactor)
     if (options.sharpness) formData.append('sharpness', options.sharpness)
     if (options.removeObjects) formData.append('removeObjects', options.removeObjects)
+    if (options.aspectRatio) formData.append('aspectRatio', options.aspectRatio)
 
     const res = await fetch('/api/enhance', {
       method: 'POST',

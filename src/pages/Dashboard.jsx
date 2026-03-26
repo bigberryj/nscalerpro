@@ -14,6 +14,9 @@ export default function Dashboard() {
   const [scaleFactor, setScaleFactor] = useState('1K')
   const [sharpness, setSharpness] = useState('normal')
   const [removeObjects, setRemoveObjects] = useState('')
+  const [aspectRatio, setAspectRatio] = useState('original')
+  const [images, setImages] = useState([])
+  const [processingIndex, setProcessingIndex] = useState(-1)
   const [lastResult, setLastResult] = useState(null)
   const fileInputRef = useRef(null)
   const dropZoneRef = useRef(null)
@@ -31,28 +34,43 @@ export default function Dashboard() {
     fetchStats()
   }, [])
 
-  const handleFileSelect = (file) => {
-    if (!file) return
-    if (!file.type.startsWith('image/')) {
-      setError('Please select an image file')
-      return
-    }
-    if (file.size > 20 * 1024 * 1024) {
-      setError('File size must be less than 20MB')
-      return
-    }
+  const handleFileSelect = (files) => {
+    const fileList = files ? Array.from(files) : []
+    if (fileList.length === 0) return
+    
+    const validFiles = fileList.filter(file => {
+      if (!file.type.startsWith('image/')) {
+        setError('Please select image files only')
+        return false
+      }
+      if (file.size > 20 * 1024 * 1024) {
+        setError('File size must be less than 20MB')
+        return false
+      }
+      return true
+    })
+    
+    if (validFiles.length === 0) return
+    
     setError(null)
     setResult(null)
-    setImage(file)
-    const reader = new FileReader()
-    reader.onload = (e) => setPreview(e.target.result)
-    reader.readAsDataURL(file)
+    setImages(validFiles)
+    
+    if (validFiles.length === 1) {
+      setImage(validFiles[0])
+      const reader = new FileReader()
+      reader.onload = (e) => setPreview(e.target.result)
+      reader.readAsDataURL(validFiles[0])
+    } else {
+      setImage(null)
+      setPreview(null)
+    }
   }
 
   const handleDrop = (e) => {
     e.preventDefault()
     dropZoneRef.current?.classList.remove('dragover')
-    handleFileSelect(e.dataTransfer.files[0])
+    handleFileSelect(e.dataTransfer.files)
   }
 
   const handleDragOver = (e) => {
@@ -66,20 +84,39 @@ export default function Dashboard() {
   }
 
   const handleUpscale = async () => {
-    if (!image) return
+    const filesToProcess = images.length > 0 ? images : (image ? [image] : [])
+    if (filesToProcess.length === 0) return
+    
     setLoading(true)
     setError(null)
     setResult(null)
 
     try {
-      const data = await api.enhance(image, scaleFactor, { sharpness, removeObjects })
-      setResult(data)
-      setLastResult(data)
+      if (filesToProcess.length === 1) {
+        const data = await api.enhance(filesToProcess[0], scaleFactor, { sharpness, removeObjects, aspectRatio })
+        setResult(data)
+        setLastResult(data)
+      } else {
+        const results = []
+        for (let i = 0; i < filesToProcess.length; i++) {
+          setProcessingIndex(i)
+          try {
+            const data = await api.enhance(filesToProcess[i], scaleFactor, { sharpness, removeObjects, aspectRatio })
+            results.push(data)
+          } catch (err) {
+            console.error(`Failed to process image ${i + 1}:`, err)
+          }
+        }
+        setResult({ multiple: true, results })
+        setProcessingIndex(-1)
+      }
       fetchStats()
+      setImages([])
     } catch (err) {
       setError(err.message)
     } finally {
       setLoading(false)
+      setProcessingIndex(-1)
     }
   }
 
@@ -88,8 +125,11 @@ export default function Dashboard() {
     setPreview(null)
     setResult(null)
     setLastResult(null)
+    setImages([])
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
+
+  const getImageCount = () => images.length > 0 ? images.length : (image ? 1 : 0)
 
   return (
     <div className="min-h-screen bg-[#0f0f23] text-white">
@@ -151,7 +191,7 @@ export default function Dashboard() {
               <span>📤</span> Original Image
             </h2>
             
-            {!preview ? (
+            {!preview && images.length === 0 ? (
               <div
                 ref={dropZoneRef}
                 onDrop={handleDrop}
@@ -162,7 +202,33 @@ export default function Dashboard() {
               >
                 <div className="text-5xl mb-4">🖼️</div>
                 <p className="text-lg font-medium text-gray-300">Drop image here</p>
-                <p className="text-gray-500 text-sm mt-1">or click to browse</p>
+                <p className="text-gray-500 text-sm mt-1">or click to browse (multiple allowed)</p>
+              </div>
+            ) : images.length > 1 ? (
+              <div className="relative">
+                <div className="grid grid-cols-3 gap-2">
+                  {images.slice(0, 6).map((file, idx) => (
+                    <div key={idx} className="relative aspect-square bg-[#0f0f23] rounded-lg overflow-hidden">
+                      <img 
+                        src={URL.createObjectURL(file)} 
+                        alt={`Upload ${idx + 1}`} 
+                        className="w-full h-full object-cover"
+                      />
+                      {idx === 5 && images.length > 6 && (
+                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white font-bold">
+                          +{images.length - 6}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={clearImage}
+                  className="absolute top-3 right-3 bg-red-500/80 hover:bg-red-500 text-white w-8 h-8 rounded-full flex items-center justify-center"
+                >
+                  ✕
+                </button>
+                <p className="text-center text-gray-400 mt-2">{images.length} images selected</p>
               </div>
             ) : (
               <div className="relative">
@@ -179,7 +245,8 @@ export default function Dashboard() {
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              onChange={(e) => handleFileSelect(e.target.files[0])}
+              multiple
+              onChange={(e) => handleFileSelect(e.target.files)}
               className="hidden"
             />
           </div>
@@ -262,6 +329,23 @@ export default function Dashboard() {
                 placeholder="e.g. person, car, watermark"
                 className="bg-[#0f0f23] border border-[#3a3a5e] rounded-lg px-3 py-2 text-white text-sm w-48 focus:border-yellow-400 focus:outline-none"
               />
+            </div>
+
+            <div className="flex gap-2 items-center">
+              <span className="text-gray-400 text-sm">Aspect:</span>
+              {['original', 'landscape', 'portrait'].map((ratio) => (
+                <button
+                  key={ratio}
+                  onClick={() => setAspectRatio(ratio)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                    aspectRatio === ratio
+                      ? 'bg-gradient-to-r from-yellow-400 to-orange-400 text-black'
+                      : 'bg-[#0f0f23] text-gray-300 hover:bg-[#2a2a4e]'
+                  }`}
+                >
+                  {ratio === 'original' ? 'Original' : ratio === 'landscape' ? 'Landscape' : 'Portrait'}
+                </button>
+              ))}
             </div>
 
             <div className="flex gap-4">

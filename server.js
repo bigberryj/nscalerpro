@@ -189,7 +189,7 @@ app.post('/api/settings', authenticateToken, requireAdmin, async (req, res) => {
 app.post('/api/enhance', authenticateToken, upload.single('image'), async (req, res) => {
   console.log('[ENHANCE] Request received')
   
-  const { scaleFactor, sharpness, removeObjects } = req.body
+  const { scaleFactor, sharpness, removeObjects, aspectRatio } = req.body
   
   const apiKeyResult = await pool.query("SELECT value FROM settings WHERE key = 'gemini_api_key'")
   const apiKey = apiKeyResult.rows[0]?.value
@@ -225,13 +225,31 @@ app.post('/api/enhance', authenticateToken, upload.single('image'), async (req, 
     console.log('[ENHANCE] Scale factor:', scaleFactor)
     console.log('[ENHANCE] Sharpness:', sharpness)
     console.log('[ENHANCE] Remove objects:', removeObjects)
+    console.log('[ENHANCE] Aspect ratio:', aspectRatio)
     
     const resolution = scaleFactor === '1K' ? '1024x1024' : scaleFactor === '2K' ? '2048x2048' : '4096x4096'
     
+    let aspectPrompt = ''
+    if (aspectRatio === 'landscape') {
+      aspectPrompt = ' Convert the image to a wider landscape/widescreen format (16:9 aspect ratio) with the content expanded to fill the wider frame naturally. '
+    } else if (aspectRatio === 'portrait') {
+      aspectPrompt = ' Convert the image to a taller portrait format (9:16 aspect ratio) with the content expanded to fill the taller frame naturally. '
+    }
+    
     if (removeObjects && removeObjects.trim()) {
       const objectsToRemove = removeObjects.trim()
-      prompt = `Remove ${objectsToRemove} from this image.`
+      prompt = `Remove ${objectsToRemove} from this image.${aspectPrompt}`
     } else if (sharpness === 'extra-sharp') {
+      prompt = `You are an expert AI image enhancement model. Analyze this image and recreate it at higher resolution (${resolution}) with:
+- Extra sharp/ crisp details
+- Enhanced clarity and definition
+- Improved texture and edge sharpness
+- Maximum detail preservation
+- Professional quality enhancement
+${aspectPrompt}Preserve the original content, colors, and composition exactly. Do not add any text, watermarks, or new elements.`
+    } else {
+      prompt = `You are an expert AI image enhancement model. Analyze this image and recreate it at higher resolution (${resolution}) with improved quality, sharper details, and enhanced clarity.${aspectPrompt}Preserve the original content, colors, and composition exactly. Make it look like a high-quality professional photograph. Do not add any text, watermarks, or new elements.`
+    }
       prompt = `You are an expert AI image enhancement model. Analyze this image and recreate it at higher resolution (${resolution}) with:
 - Extra sharp/ crisp details
 - Enhanced clarity and definition
@@ -315,8 +333,8 @@ Preserve the original content, colors, and composition exactly. Do not add any t
 
 app.get('/api/images', authenticateToken, async (req, res) => {
   const images = await pool.query(
-    'SELECT id, original_name, enhanced_name, scale_factor, input_tokens, output_tokens, cost, status, created_at FROM images WHERE user_id = $1 ORDER BY created_at DESC',
-    [req.user.id]
+    'SELECT id, original_name, enhanced_name, scale_factor, input_tokens, output_tokens, cost, status, created_at FROM images WHERE user_id = $1 AND status != $2 ORDER BY created_at DESC',
+    [req.user.id, 'failed']
   )
   res.json(images.rows)
 })
