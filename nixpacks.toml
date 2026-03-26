@@ -1,0 +1,12 @@
+# nixpacks.toml
+[nodejs]
+version = "22"
+
+[phases.setup]
+cmds = ["npm install --omit=dev --ignore-scripts", "chmod -R 755 node_modules/.bin/"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "node server.js"
